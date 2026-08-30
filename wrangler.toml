@@ -1,0 +1,15 @@
+name = "buckle"
+main = "worker/worker.js"
+compatibility_date = "2025-08-01"
+account_id = "62231b040ed00c96cdcf3a4541eab958"
+workers_dev = true
+
+# Static assets: the single built HTML. The worker handles /api/*, everything
+# else falls through to the asset (the app).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+[[routes]]
+pattern = "buckle.naklitechie.com"
+custom_domain = true

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="buckle-version" content="__VERSION__" />
+<title>Buckle — load a system until it buckles</title>
+<!--
+  Buckle. An architecture linter with numbers.
+  Engine vendored from breakscale (github.com/xevrion/breakscale, MIT) —
+  the src/sim discrete-event engine, transpiled and inlined. UI mechanics and
+  glossary cribbed from breakscale's src/components + src/content (see CRIB.md);
+  the Dense skin is Buckle's. MIT for the vendored engine; attribution retained.
+-->
+<style>
+  :root {
+    --bg: #0a0c0f; --panel: #0f1216; --panel-2: #12161b;
+    --ink: #c9d2dc; --ink-hi: #eef2f6; --ink-dim: #74808c; --ink-faint: #454f59;
+    --line: #1e252c; --line-hi: #2c353d;
+    --accent: #ff4b39;      /* warm red — shed/tripped/crashed ONLY */
+    --warn: #cf9a3a;        /* amber — warn thresholds */
+    --ok: #4a8f6d;
+    --g-traffic: #4d8fd6; --g-compute: #58a0a0; --g-data: #6f7bd6;
+    --g-stores: #9079c6; --g-messaging: #5aa06a; --g-control: #8b95a1;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --f-sm: 11px; --f-md: 12px; --f-lg: 13px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: var(--f-md);
+    font-weight: 400; -webkit-font-smoothing: antialiased;
+    display: grid; grid-template-rows: 40px 1fr auto;
+    height: 100vh; overflow: hidden;
+  }
+  button { font-family: var(--mono); font-size: var(--f-md); color: var(--ink);
+    background: transparent; border: 1px solid var(--line-hi); padding: 4px 10px;
+    cursor: pointer; border-radius: 2px; }
+  button:hover { border-color: var(--ink-dim); color: var(--ink-hi); }
+  button.primary { border-color: var(--ink-dim); color: var(--ink-hi); }
+  button.primary:hover { background: var(--panel-2); }
+  input { font-family: var(--mono); font-size: var(--f-md); color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--line-hi); padding: 5px 8px;
+    border-radius: 2px; outline: none; }
+  input:focus { border-color: var(--ink-dim); }
+  a { color: var(--g-traffic); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .dim { color: var(--ink-dim); }
+  .faint { color: var(--ink-faint); }
+  .accent { color: var(--accent); }
+  .warn { color: var(--warn); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Top strip */
+  #top { grid-row: 1; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #top .brand { font-weight: 600; color: var(--ink-hi); letter-spacing: 0.5px; }
+  #top .brand b { color: var(--accent); }
+  #repo { width: 320px; }
+  #top .spacer { flex: 1; }
+  #version { color: var(--ink-faint); font-size: var(--f-sm); }
+  .icon-btn { border-color: transparent; padding: 4px 6px; }
+
+  /* Main three columns */
+  #main { grid-row: 2; display: grid; grid-template-columns: 280px 1fr 320px;
+    min-height: 0; }
+  #left, #right { background: var(--panel); min-height: 0; overflow-y: auto; }
+  #left { border-right: 1px solid var(--line); }
+  #right { border-left: 1px solid var(--line); }
+  #centre { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  #canvas-wrap { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+  svg#canvas { width: 100%; height: 100%; display: block; }
+
+  .rail-head { font-size: var(--f-sm); text-transform: uppercase; letter-spacing: 1px;
+    color: var(--ink-dim); padding: 10px 12px 6px; border-bottom: 1px solid var(--line); }
+  .rail-body { padding: 6px 0; }
+
+  /* Findings list */
+  .finding { padding: 8px 12px; border-bottom: 1px solid var(--line);
+    cursor: pointer; display: block; }
+  .finding:hover { background: var(--panel-2); }
+  .finding .kind { color: var(--ink-hi); font-weight: 600; }
+  .finding.sev-high .kind { color: var(--accent); }
+  .finding .meta { color: var(--ink-dim); font-size: var(--f-sm); margin-top: 2px; }
+  .finding .ev { color: var(--warn); }
+
+  .stage-row { padding: 10px 12px; color: var(--ink-dim); font-size: var(--f-sm); }
+  .stage-row b { color: var(--ink-hi); }
+
+  /* Traffic slider row */
+  #slider-row { border-top: 1px solid var(--line); background: var(--panel);
+    padding: 8px 14px; display: flex; align-items: center; gap: 14px; }
+  #slider-row input[type=range] { flex: 1; accent-color: var(--ink-dim); }
+  .readout { font-size: var(--f-sm); color: var(--ink-dim); white-space: nowrap; }
+  .readout b { color: var(--ink-hi); font-variant-numeric: tabular-nums; }
+  .readout.bad b { color: var(--accent); }
+
+  /* Inspector */
+  .insp-field { display: grid; grid-template-columns: 1fr 78px; gap: 6px;
+    align-items: center; padding: 4px 12px; }
+  .insp-field label { color: var(--ink-dim); font-size: var(--f-sm); }
+  .insp-field input { text-align: right; padding: 3px 6px; }
+  .prov { font-size: 9px; padding: 1px 4px; border: 1px solid var(--line-hi);
+    border-radius: 2px; color: var(--ink-faint); cursor: help; margin-left: 4px; }
+  .prov.read { color: var(--g-messaging); border-color: #24402f; }
+  .prov.assumed { color: var(--warn); border-color: #40381f; }
+  .insp-title { padding: 10px 12px; color: var(--ink-hi); font-weight: 600;
+    border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .chaos { padding: 8px 12px; border-top: 1px solid var(--line); }
+  .chaos button { margin: 2px 3px 2px 0; padding: 3px 7px; font-size: var(--f-sm); }
+
+  /* Bottom metrics strip */
+  #bottom { grid-row: 3; border-top: 1px solid var(--line); background: var(--panel);
+    max-height: 150px; overflow: hidden; transition: max-height .15s; }
+  #bottom.collapsed { max-height: 26px; }
+  #bottom .bar { display: flex; align-items: center; gap: 16px; padding: 4px 14px;
+    font-size: var(--f-sm); color: var(--ink-dim); border-bottom: 1px solid var(--line); cursor: pointer; }
+  #bottom .bar b { color: var(--ink-hi); font-variant-numeric: tabular-nums; }
+  #node-metrics { padding: 6px 14px; overflow-x: auto; white-space: nowrap; }
+  .spark { display: inline-block; vertical-align: middle; margin: 0 10px; }
+  .spark .lbl { color: var(--ink-faint); font-size: 9px; display: block; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--line-hi); color: var(--ink);
+    padding: 8px 14px; border-radius: 3px; font-size: var(--f-sm); opacity: 0;
+    pointer-events: none; transition: opacity .2s; z-index: 40; max-width: 60ch; }
+  #toast.show { opacity: 1; }
+
+  /* Modal (guide / raw output / file viewer) */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--line-hi);
+    border-radius: 4px; max-width: 720px; max-height: 80vh; overflow: auto;
+    padding: 18px 22px; }
+  .modal h2 { margin: 0 0 10px; font-size: var(--f-lg); color: var(--ink-hi); }
+  .modal pre { background: var(--bg); border: 1px solid var(--line); padding: 10px;
+    overflow: auto; font-size: var(--f-sm); white-space: pre-wrap; }
+  .modal .kbd { color: var(--ink-hi); }
+  kbd { background: var(--panel-2); border: 1px solid var(--line-hi); border-radius: 2px;
+    padding: 0 5px; font-size: 10px; }
+
+  .node-g { cursor: pointer; }
+  .node-g.staged { opacity: 0.42; }
+  .node-sel { outline: none; }
+</style>
+</head>
+<body>
+  <div id="top">
+    <span class="brand">BUCK<b>L</b>E</span>
+    <input id="repo" placeholder="github.com/owner/repo   ( / to focus )" spellcheck="false" />
+    <input id="ref" placeholder="ref" style="width:90px" spellcheck="false" />
+    <button id="run-btn" class="primary">Run</button>
+    <button id="key-btn" class="icon-btn" title="API key / GitHub token (memory only)">⚿</button>
+    <span id="ladder-chip" class="dim" style="font-size:var(--f-sm)"></span>
+    <span class="spacer"></span>
+    <button id="preset-btn" class="icon-btn dim" title="Load a preset">presets</button>
+    <button id="paste-btn" class="icon-btn dim" title="Paste topology JSON">paste</button>
+    <button id="export-btn" class="icon-btn dim" title="Export (e)">export</button>
+    <button id="guide-btn" class="icon-btn dim" title="Guide (?)">?</button>
+    <span id="version" class="num">__VERSION__</span>
+  </div>
+
+  <div id="main">
+    <div id="left">
+      <div class="rail-head" id="left-head">Findings</div>
+      <div class="rail-body" id="left-body"></div>
+    </div>
+    <div id="centre">
+      <div id="canvas-wrap">
+        <svg id="canvas" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div id="slider-row">
+        <span class="readout">load <b class="num" id="ro-rps">0</b>/s</span>
+        <input id="traffic" type="range" min="0" max="10000" value="0" step="1" />
+        <span class="readout">goodput <b class="num" id="ro-good">0</b>/s</span>
+        <span class="readout">p99 <b class="num" id="ro-p99">0</b></span>
+        <span class="readout" id="ro-shed-wrap">shed <b class="num" id="ro-shed">0</b>/s</span>
+      </div>
+    </div>
+    <div id="right">
+      <div id="insp"></div>
+    </div>
+  </div>
+
+  <div id="bottom" class="collapsed">
+    <div class="bar" id="bottom-bar">
+      <span>p50 <b id="m-p50">n/a</b></span>
+      <span>p95 <b id="m-p95">n/a</b></span>
+      <span>p99 <b id="m-p99">n/a</b></span>
+      <span>goodput <b id="m-good">n/a</b></span>
+      <span>offered <b id="m-off">n/a</b></span>
+      <span class="faint" style="margin-left:auto">metrics ▾</span>
+    </div>
+    <div id="node-metrics"></div>
+  </div>
+
+  <div id="toast"></div>
+  <div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
+
+  <script type="buckle/sweep">__SWEEP_WORKER__</script>
+  <script type="module">__APP_BUNDLE__</script>
+</body>
+</html>

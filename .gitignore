@@ -9,3 +9,6 @@ vendor-src/
 # dev artifacts (rebuilt by tools/gate-c1.sh)
 build/
 node_modules/
+.wrangler/
+dist/
+.dev.vars
