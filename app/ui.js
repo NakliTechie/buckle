@@ -411,6 +411,22 @@ $('preset-btn').addEventListener('click', openPresets);
 $('paste-btn').addEventListener('click', openPaste);
 $('export-btn').addEventListener('click', doExport);
 $('guide-btn').addEventListener('click', openGuide);
+// Theme: default is light (Chirag's default); dark is the toggle / system-dark.
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('buckle-theme'); } catch { /* private mode */ }
+  if (saved === 'dark' || saved === 'light') document.documentElement.setAttribute('data-theme', saved);
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const isDark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('buckle-theme', next); } catch { /* ignore */ }
+  toast(`${next} mode`);
+}
+$('theme-btn').addEventListener('click', toggleTheme);
+initTheme();
 $('bottom-bar').addEventListener('click', () => $('bottom').classList.toggle('collapsed'));
 $('repo').addEventListener('keydown', (e) => { if (e.key === 'Enter') runRepo(); });
 

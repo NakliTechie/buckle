@@ -107,13 +107,26 @@ const ASSUMED = (kind) => ({ src: 'ASSUMED', default: (DEFAULTS[kind] || DEFAULT
  * @returns { topology, provenance, assumptions, note } or null if no compose.
  */
 export function heuristicExtract(analyze) {
-  const compose = (analyze.selected || []).find(
+  const candidates = (analyze.selected || []).filter(
     (f) => /docker-compose[^/]*\.ya?ml$|(^|\/)compose[^/]*\.ya?ml$/i.test(f.path) && typeof f.content === 'string',
   );
-  if (!compose) return null;
+  if (candidates.length === 0) return null;
 
-  const services = parseCompose(compose.content).filter((s) => s.image || s.command || /web|app|api|worker|db|redis|sidekiq|nginx|postgres/i.test(s.name));
-  if (services.length === 0) return null;
+  // Pick the richest, most production-like compose: score by parsed service
+  // count, penalise dev/test/devcontainer files and deep paths, so a repo's
+  // real docker-compose.yaml wins over .devcontainer/*.base.yml.
+  const keep = (s) => s.image || s.command || /web|app|api|worker|db|redis|sidekiq|nginx|postgres|cache|queue|mysql|mongo/i.test(s.name);
+  let best = null;
+  for (const f of candidates) {
+    const svc = parseCompose(f.content).filter(keep);
+    const depth = (f.path.match(/\//g) || []).length;
+    const penalty = /devcontainer|\.test\.|\.dev\.|test\.ya?ml$|dev\.ya?ml$/i.test(f.path) ? 100 : 0;
+    const score = svc.length * 10 - depth - penalty;
+    if (!best || score > best.score) best = { compose: f, services: svc, score };
+  }
+  if (!best || best.services.length === 0) return null;
+  const compose = best.compose;
+  const services = best.services;
 
   const nodes = [];
   const provenance = {};

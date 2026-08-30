@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -13,17 +13,37 @@
   the Dense skin is Buckle's. MIT for the vendored engine; attribution retained.
 -->
 <style>
+  /* Default = light Dense (the calmer surface). Dark is the toggle / the
+     system-dark default. One accent working on state in both. */
   :root {
+    --bg: #f6f7f8; --panel: #eef0f2; --panel-2: #e6e9ec;
+    --ink: #313a43; --ink-hi: #0f151b; --ink-dim: #6a7580; --ink-faint: #a2abb4;
+    --line: #dde1e5; --line-hi: #c8ced4;
+    --accent: #cf3a29;      /* warm red — shed/tripped/crashed ONLY */
+    --warn: #a1741d;        /* amber — warn thresholds */
+    --ok: #2f7d57;
+    --g-traffic: #2f6fb0; --g-compute: #3d8484; --g-data: #5560b8;
+    --g-stores: #7458ab; --g-messaging: #3f8552; --g-control: #6c7883;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --f-sm: 11px; --f-md: 12px; --f-lg: 13px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0a0c0f; --panel: #0f1216; --panel-2: #12161b;
+      --ink: #c9d2dc; --ink-hi: #eef2f6; --ink-dim: #74808c; --ink-faint: #454f59;
+      --line: #1e252c; --line-hi: #2c353d;
+      --accent: #ff4b39; --warn: #cf9a3a; --ok: #4a8f6d;
+      --g-traffic: #4d8fd6; --g-compute: #58a0a0; --g-data: #6f7bd6;
+      --g-stores: #9079c6; --g-messaging: #5aa06a; --g-control: #8b95a1;
+    }
+  }
+  :root[data-theme="dark"] {
     --bg: #0a0c0f; --panel: #0f1216; --panel-2: #12161b;
     --ink: #c9d2dc; --ink-hi: #eef2f6; --ink-dim: #74808c; --ink-faint: #454f59;
     --line: #1e252c; --line-hi: #2c353d;
-    --accent: #ff4b39;      /* warm red — shed/tripped/crashed ONLY */
-    --warn: #cf9a3a;        /* amber — warn thresholds */
-    --ok: #4a8f6d;
+    --accent: #ff4b39; --warn: #cf9a3a; --ok: #4a8f6d;
     --g-traffic: #4d8fd6; --g-compute: #58a0a0; --g-data: #6f7bd6;
     --g-stores: #9079c6; --g-messaging: #5aa06a; --g-control: #8b95a1;
-    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-    --f-sm: 11px; --f-md: 12px; --f-lg: 13px;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -159,6 +179,7 @@
     <button id="preset-btn" class="icon-btn dim" title="Load a preset">presets</button>
     <button id="paste-btn" class="icon-btn dim" title="Paste topology JSON">paste</button>
     <button id="export-btn" class="icon-btn dim" title="Export (e)">export</button>
+    <button id="theme-btn" class="icon-btn dim" title="Toggle light / dark">◐</button>
     <button id="guide-btn" class="icon-btn dim" title="Guide (?)">?</button>
     <span id="version" class="num">__VERSION__</span>
   </div>
