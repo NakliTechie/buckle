@@ -1,44 +1,62 @@
-# STATE — after C1 (Engine)
+# STATE — v1.0 shipped
 
-Date: 2026-08-30. Chunk C1 of HANDOFF.md §5.
+Date: 2026-08-30. C1–C6 complete. Live: **https://buckle.naklitechie.com**.
 
-## Passed (gate: `tools/gate-c1.sh`, exit 0)
+## Passed (`tools/gate-all.sh`, exit 0)
 
-- Engine vendored verbatim: breakscale `src/sim` (23 files) at pinned commit
-  `dc9c1a07e573da5441c12e1a205ffe8678504dd5` → `engine/sim/` (see `engine/VENDOR.md`).
-- Transpile: `tsc -p tsconfig.engine.json` → `build/sim/`, 0 errors.
-- Engine's own tests on the transpiled files: 229/229 pass (`npx vitest run --dir build/sim`).
-- Bundle: `engine.esm.js` (single plain-ESM file, 231,713 bytes, esbuild unminified).
-- Determinism fixture: `snapshot()` for PRESETS[0], seed 42, 600 ticks @60fps is
-  byte-identical (8,108 bytes) between native breakscale TS (`tools/gen-native-fixture.test.ts`,
-  needs vendor-src/) and the bundled engine (`tools/check-snapshot.mjs`).
-- `validateTopology` (`app/validate.js`): all 23 presets pass; mangled input rejected
-  with per-field errors; NODE_KINDS covers all 32 kinds the presets use (`tools/check-validate.mjs`).
-- Manifest scaffold (`app/manifest.js` + `app/bus.js` + `app/runtime.js`):
-  `load_preset` (stages) · `accept_graph` · `get_snapshot` · `set_load`; parity lint
-  green (`tools/parity-lint.mjs`, manifest ⊇ bus).
-- Gate negative-checked: corrupting the fixture makes it exit 1.
+- **C1 engine** — breakscale `src/sim` vendored @ `dc9c1a0`, transpiled + bundled to
+  `engine.esm.js`; 229/229 upstream tests on the transpiled files; snapshot
+  byte-identical native-vs-bundle (`gate-c1.sh`).
+- **validateTopology** — 23 presets pass, mangled input rejected; the one ingress (I3).
+- **parity lint** — manifest (12 tools) ⊇ bus (11 commands); the two doors, one core.
+- **C3 sweep** — four sanity fixtures + determinism + timing (`check-sweep.mjs`):
+  retry-storm→amplification top, sharded→shard knee w/ healthy p50, breaker→no
+  collapse, autoscaling→shed window; same-seed identical findings; 9-node sweep 1.7 s.
+- **C4 select** — five named chatwoot config files selected, budgeted, deterministic,
+  order-independent (`check-select.mjs`).
+- **C5 sidecar** — compose→topology heuristic validates with resolving READ tags,
+  every numeric field tagged; FakeTransport model path validates; key never imported
+  into storage (`check-sidecar.mjs`).
 
-## Deviations from the handoff (noted per §8; none block)
+## Live-verified on the deployed site (real repos, real edge worker)
 
-- D1 says "transpiled once (tsc, strip types)". tsc alone cannot emit ONE file from 22
-  modules, so the pipeline is tsc (type-strip fidelity, gate step 1-2) + esbuild
-  `--bundle --format=esm` unminified (the single inlinable file, gate step 3). The
-  byte-identical fixture is the proof the bundle didn't change behaviour.
-- `engine/sim/presets.annotations.test.ts` is vendored but excluded from transpile/tests:
-  it imports `../components/annotationLayout` (UI layout, outside the vendored engine
-  boundary). Engine correctness is untouched; the other 6 test files run.
-- Manifest carries `accept_graph` already (handoff lists it for the full table): a
-  staging `load_preset` with no commit point would make `get_snapshot` unreachable.
+- **chatwoot/chatwoot** (D12 target) — 9102 files → 5 named configs selected; 8-node
+  topology from `docker-compose.yaml` (rails/sidekiq/postgres/redis/vite/mailhog);
+  5 knee findings, sidekiq the first to knee.
+- **dockersamples/example-voting-app** — 6 nodes; 11 findings, retry_amplification
+  (worker→redis/db) ranked top; goodput collapse at 127/s.
+- **mastodon/mastodon** — 6 nodes (web/streaming/sidekiq/postgres/redis); 9 findings,
+  collapse at 207/s.
+- **supabase/supabase** — graceful "repo too large (>500 MB)".
+- **plausible/analytics** — graceful "no docker-compose; add a key or paste JSON".
 
-## Open
+## Architecture note (Chirag's change from the handoff)
 
-- C2 next: port breakscale `src/components` + `src/content` to vanilla (CRIB.md),
-  Dense retheme, canvas/inspector/sliders/metrics, storage façade, export/import.
-- O1–O3 (HANDOFF.md §7) still open; close before C5. O4: chatwoot pin at C4.
-- `window.buckle` / WebMCP door exists in `createAgentFace` but no page hosts it yet (C2).
+The repo pull moved from in-tab (handoff §4.1) to the **edge worker** (`worker/worker.js`):
+it fetches the GitHub tarball, gunzips + streams the tar (bounded memory, so chatwoot's
+9102 files untar without OOM), runs the deterministic selector, and returns the tree +
+selected slice. Sovereignty invariant kept in spirit — only the topology slice ever goes
+to the person's model; the repos are public code fetched by Buckle's own edge.
 
-## Tried (nothing rolled back)
+## Deviations / open
 
-- Gate negative check against `build/` failed by design — gate re-transpiles from
-  source, healing it; moved the check to the fixture layer, which fails correctly.
+- **Theme**: default is now **light** Dense (Chirag asked; too dark before); near-black
+  is the toggle / system-dark. Handoff §6 specified dark-only; superseded by request.
+- **Extraction default is the deterministic compose heuristic**, not a model (handoff
+  §4.3 led with the model). Rationale: a compose file is READ evidence, so the no-key
+  path is honest and the live site works with no BYOK. Model path (BYOK) is the richer
+  optional tier and is built + gated (FakeTransport).
+- Cold-open worked example is the `full-stack` preset with precomputed findings, not
+  Chatwoot (D8/D12). Swapping in a bundled Chatwoot topology is a small follow-up.
+- Enter-in-repo-field didn't fire under browser automation; the Run button is the
+  verified path. Worth a manual check with a human keypress.
+- O1–O3 (handoff §7): O1 answered (BYOK is the honest default, key-field copy says so);
+  O2 taken verbatim from breakscale-style defaults; O3 (upstream WebMCP PR) deferred.
+
+## Tried (nothing left broken)
+
+- Buffered untar OOM'd on chatwoot (>90 MB) → rewrote as a true streaming parser with
+  incremental drain; the 24 MB text budget starved `docker-compose.yaml` of content →
+  high-value config files now captured unconditionally.
+- collapse-by-unbounded-queue mis-detected (finite queueLimits shed instead of growing)
+  → collapse now keys on timeout-share (a storm times out; a breaker fast-rejects).
