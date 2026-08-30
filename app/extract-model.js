@@ -33,25 +33,62 @@ export function buildNanoPrompt(analyze) {
   const body = (compose?.content || '').slice(0, 1200);
   const prompt = `From this docker-compose, list the services as a JSON graph. Reply with ONLY JSON, no prose.
 Format: {"nodes":[{"id":"web","kind":"service","label":"web"}],"edges":[["web","db"]]}
-kind is one of: client, service, worker, db, cache, queue, lb, searchindex, objectstore.
-Map: rails/web/app/api/node=service; sidekiq/worker/celery=worker; postgres/mysql/mongo=db; redis/memcached=cache; nginx/traefik=lb; elasticsearch/opensearch=searchindex; rabbitmq/kafka=queue.
-Add one "client" node with an edge to the main web service.
+kind is EXACTLY one of: client, service, worker, db, cache, queue, lb, searchindex, objectstore.
+Assign kind by the image/name, using these rules (a data store is NOT a "db" unless it is a SQL/document database):
+- redis, valkey, memcached  -> cache   (NOT db)
+- postgres, mysql, mariadb, mongo, cockroach  -> db
+- sidekiq, celery, resque, any *worker*  -> worker
+- rabbitmq, kafka, nats  -> queue
+- elasticsearch, opensearch, solr, meilisearch  -> searchindex
+- minio, s3  -> objectstore
+- nginx, traefik, haproxy, envoy  -> lb
+- rails, web, app, api, node, puma, gunicorn, the main HTTP server  -> service
+Add one "client" node with an edge to the main web/app service.
 
 ${body}`;
   return prompt;
 }
 
+// Unambiguous id/label → kind signals. A small model often mislabels a store
+// (Gemini Nano called redis a "db"); when the name clearly names a well-known
+// component we snap the kind deterministically rather than trust the guess.
+// Order matters: more specific before generic.
+const STRONG_KIND = [
+  [/(^|[^a-z])(redis|valkey|keydb|memcached|memcache)([^a-z]|$)/i, 'cache'],
+  [/(^|[^a-z])(postgres|postgresql|pg|mysql|mariadb|mongo|mongodb|cockroach|sqlite|percona)([^a-z]|$)/i, 'db'],
+  [/(^|[^a-z])(sidekiq|celery|resque|worker|delayed_job|delayed|beat)([^a-z]|$)/i, 'worker'],
+  [/(^|[^a-z])(rabbitmq|rabbit|kafka|redpanda|nats|pulsar|sqs)([^a-z]|$)/i, 'streambroker'],
+  [/(^|[^a-z])(elasticsearch|elastic|opensearch|meilisearch|meili|solr|typesense)([^a-z]|$)/i, 'searchindex'],
+  [/(^|[^a-z])(minio|s3|objectstore|ceph|garage)([^a-z]|$)/i, 'objectstore'],
+  [/(^|[^a-z])(clickhouse|influx|influxdb|timescale|prometheus|victoria)([^a-z]|$)/i, 'timeseriesdb'],
+  [/(^|[^a-z])(nginx|traefik|haproxy|envoy|caddy|loadbalancer|load_balancer)([^a-z]|$)/i, 'lb'],
+  [/(^|[^a-z])(cdn|cloudfront|fastly)([^a-z]|$)/i, 'cdn'],
+  [/(^|[^a-z])(websocket|actioncable|cable|ws)([^a-z]|$)/i, 'websocket'],
+  // A delimited, standalone "db"/"database" token → db. Last, so specific
+  // stores (influxdb→timeseriesdb, vectordb…) win first; the delimiter stops
+  // it matching glued suffixes like "influxdb".
+  [/(^|[\s_-])(db|database)([\s_-]|$)/i, 'db'],
+];
+function snapKind(name, modelKind) {
+  const s = `${name || ''}`;
+  for (const [re, kind] of STRONG_KIND) if (re.test(s)) return kind;
+  return KIND_NAME[modelKind] ? modelKind : 'service';
+}
+
 // Turn a shape-only graph ({nodes:[{id,kind,label}], edges:[[from,to]]|[{from,to}]})
 // into a full engine topology: fill config from defaults, lay out, ensure a client.
 export function normalizeShape(shape) {
-  const nodes = (shape.nodes || []).map((n, i) => ({
-    id: String(n.id || `n${i}`).replace(/[^A-Za-z0-9_-]/g, '_'),
-    kind: KIND_NAME[n.kind] ? n.kind : 'service',
-    label: n.label || n.id || `node ${i}`,
-    x: 60 + (1 + (i % 3)) * 200,
-    y: 120 + Math.floor(i / 3) * 130,
-    config: configForKind(KIND_NAME[n.kind] ? n.kind : 'service'),
-  }));
+  const nodes = (shape.nodes || []).map((n, i) => {
+    const kind = snapKind(`${n.id || ''} ${n.label || ''}`, n.kind);
+    return {
+      id: String(n.id || `n${i}`).replace(/[^A-Za-z0-9_-]/g, '_'),
+      kind,
+      label: n.label || n.id || `node ${i}`,
+      x: 60 + (1 + (i % 3)) * 200,
+      y: 120 + Math.floor(i / 3) * 130,
+      config: configForKind(kind),
+    };
+  });
   const ids = new Set(nodes.map((n) => n.id));
   if (!nodes.some((n) => n.kind === 'client')) {
     nodes.unshift({ id: 'client', kind: 'client', label: 'Client', x: 60, y: 200, config: configForKind('client') });
