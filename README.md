@@ -6,6 +6,13 @@ it until it buckles — then tells you which component gave way first and why.
 
 Live: **https://buckle.naklitechie.com**
 
+> **Built on [breakscale](https://github.com/xevrion/breakscale) by
+> [@xevrion](https://github.com/xevrion) (MIT).** Buckle vendors breakscale's
+> discrete-event simulation engine verbatim and cribs its UI mechanics and
+> glossary. breakscale is the reason this works — Buckle adds repo ingest,
+> extraction, the load sweep, and findings on top. Full credit and the port log
+> are in [`CRIB.md`](CRIB.md) and [`engine/VENDOR.md`](engine/VENDOR.md).
+
 *Teaching-grade fidelity, stated as such.* The sim is a queueing model (finite
 server slots, gamma service times, FIFO queues, real timeouts and retries), not a
 capacity planner. It tells you *which* component knees first and *why*,
