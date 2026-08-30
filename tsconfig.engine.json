@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": "build",
+    "rootDir": "engine",
+    "declaration": false,
+    "sourceMap": false,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["engine/sim/**/*.ts"],
+  "exclude": ["engine/sim/presets.annotations.test.ts"]
+}

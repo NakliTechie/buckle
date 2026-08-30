@@ -4,3 +4,8 @@ Thumbs.db
 
 # session planning (local only)
 plan/
+vendor-src/
+
+# dev artifacts (rebuilt by tools/gate-c1.sh)
+build/
+node_modules/
