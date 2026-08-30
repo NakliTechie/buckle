@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { heuristicExtract } from '../app/extract-heuristic.js';
 import { validateTopology } from '../app/validate.js';
-import { extractWithModel, makeFakeTransport } from '../app/extract-model.js';
+import { extractWithModel, makeFakeTransport, parseModelJson, normalizeShape } from '../app/extract-model.js';
 
 let failed = 0;
 const check = (name, cond, detail = '') => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`); if (!cond) failed = 1; };
@@ -62,6 +62,18 @@ const recorded = JSON.stringify({
 });
 const res = await extractWithModel(analyze, { transport: makeFakeTransport(recorded), apiKey: 'unused' });
 check('FakeTransport response validates through one ingress', !!res.topology && res.topology.nodes.length === 2);
+
+// Real on-device Gemini Nano output (recorded live from Chrome, tab on
+// buckle.naklitechie.com) → the shape normalizer + one ingress yield a valid
+// engine topology. This is the discharge of the model path with a real model,
+// no cloud key (task b).
+const nanoRaw = readFileSync(new URL('./fixtures/nano-voting-app.txt', import.meta.url), 'utf8');
+const nanoShape = parseModelJson(nanoRaw);
+const nanoTopo = normalizeShape(nanoShape);
+const nanoValid = validateTopology(nanoTopo);
+check('real Gemini Nano output normalizes to a valid topology', nanoValid.ok, nanoValid.ok ? `${nanoTopo.nodes.length} nodes` : nanoValid.errors.slice(0, 3).join('; '));
+const nanoKinds = new Set(nanoTopo.nodes.map((n) => n.kind));
+check('Nano graph has client + service + worker + db + cache', ['client', 'service', 'worker', 'db', 'cache'].every((k) => nanoKinds.has(k)));
 
 // Source-level key-safety: no storage module is imported by the extractors,
 // so a key can't be persisted from there.

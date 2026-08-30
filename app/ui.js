@@ -15,7 +15,7 @@ import {
 import { explain } from './explanations.js';
 import { analyzeRepo } from './ingest.js';
 import { heuristicExtract } from './extract-heuristic.js';
-import { extractWithModel, anthropicTransport, openaiTransport } from './extract-model.js';
+import { extractWithModel, extractWithNano, anthropicTransport, openaiTransport, makeGeminiNanoTransport } from './extract-model.js';
 import { saveDesign, openDesign, downloadText } from './storage.js';
 import COLD_OPEN from './cold-open.json' with { type: 'json' };
 
@@ -289,15 +289,25 @@ async function runRepo() {
   } catch (e) { renderStage(`Ingest failed: ${e.message}`); toast(e.message); return; }
   renderStage(`Read ${analyze.selected.length} files (${(analyze.selectedBytes / 1024).toFixed(0)} KB) of ${analyze.totalFiles}. Extracting topology…`);
 
-  // Extract: BYOK model if a key is set, else the deterministic heuristic (D4).
+  // Extract via the ladder: on-device Gemini Nano or BYOK model when chosen,
+  // else the deterministic compose heuristic (D4).
   let extracted = null;
-  if (ui.keys.apiKey) {
+  const useNano = ui.keys.provider === 'gemini-nano';
+  if (useNano || ui.keys.apiKey) {
     try {
-      const transport = ui.keys.provider === 'anthropic' ? anthropicTransport
-        : ui.keys.provider === 'deepseek' ? openaiTransport('https://api.deepseek.com/v1')
-        : openaiTransport();
-      const res = await extractWithModel(analyze, { transport, apiKey: ui.keys.apiKey, model: ui.keys.model || undefined });
-      extracted = { topology: res.topology, provenance: {}, source: `model:${ui.keys.provider}`, note: `Extracted by ${ui.keys.provider} in ${res.rounds} repair round(s).` };
+      const label = useNano ? 'gemini-nano' : ui.keys.provider;
+      let res;
+      if (useNano) {
+        renderStage(`Extracting with on-device Gemini Nano… (first run downloads the model)`);
+        const transport = makeGeminiNanoTransport({ onProgress: (p) => renderStage(`Downloading Gemini Nano… ${Math.round(p * 100)}%`) });
+        res = await extractWithNano(analyze, { transport });
+      } else {
+        const transport = ui.keys.provider === 'anthropic' ? anthropicTransport
+          : ui.keys.provider === 'deepseek' ? openaiTransport('https://api.deepseek.com/v1')
+          : openaiTransport();
+        res = await extractWithModel(analyze, { transport, apiKey: ui.keys.apiKey, model: ui.keys.model || undefined });
+      }
+      extracted = { topology: res.topology, provenance: {}, source: `model:${label}`, stats: { nodes: res.topology.nodes.length, read: 0, assumed: 0 }, note: `Extracted by ${label} in ${res.rounds} repair round(s). The model proposed the graph shape; the engine grades it, and every number is a labelled default.` };
     } catch (e) {
       toast(`Model extraction failed (${e.message}); falling back to compose read.`);
     }
@@ -366,7 +376,7 @@ function openKeys() {
     <div class="dim" style="font-size:var(--f-sm);margin-bottom:10px">Local model unavailable → BYOK is the honest default. Nothing here is written to disk (D6).</div>
     <div class="insp-field" style="grid-template-columns:1fr 2fr"><label>provider</label>
       <select id="k-prov" style="background:var(--panel-2);color:var(--ink);border:1px solid var(--line-hi)">
-        <option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option></select></div>
+        <option value="gemini-nano">Gemini Nano (on-device, no key)</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option></select></div>
     <div class="insp-field" style="grid-template-columns:1fr 2fr"><label>API key</label><input id="k-api" type="password" value="${ui.keys.apiKey}" placeholder="sk-…" /></div>
     <div class="insp-field" style="grid-template-columns:1fr 2fr"><label>model</label><input id="k-model" value="${ui.keys.model}" placeholder="default" /></div>
     <div class="insp-field" style="grid-template-columns:1fr 2fr"><label>GitHub token</label><input id="k-gh" type="password" value="${ui.keys.ghToken}" placeholder="for private / rate limits" /></div>
@@ -376,13 +386,16 @@ function openKeys() {
     ui.keys.provider = $('k-prov').value; ui.keys.apiKey = $('k-api').value.trim();
     ui.keys.model = $('k-model').value.trim(); ui.keys.ghToken = $('k-gh').value.trim();
     closeModal(); detectLadder();
-    toast(ui.keys.apiKey ? `BYOK ${ui.keys.provider} set (memory only)` : 'Keys cleared');
+    toast(ui.keys.provider === 'gemini-nano' ? 'Gemini Nano selected · on-device, no key'
+      : ui.keys.apiKey ? `BYOK ${ui.keys.provider} set (memory only)` : 'Keys cleared');
   });
 }
 function detectLadder() {
-  // Ladder detect (§4.3): local bridge → WebGPU → BYOK. Detect, don't ask.
+  // Ladder detect (§4.3): on-device model → WebGPU → BYOK. Detect, don't ask.
   let tier = 'compose-read (no key)';
-  if (ui.keys.apiKey) tier = `BYOK ${ui.keys.provider}`;
+  if (ui.keys.provider === 'gemini-nano') tier = 'Gemini Nano · on-device';
+  else if (ui.keys.apiKey) tier = `BYOK ${ui.keys.provider}`;
+  else if ('LanguageModel' in window) tier = 'Gemini Nano available · compose-read default';
   else if (navigator.gpu) tier = 'WebGPU available · compose-read default';
   $('ladder-chip').textContent = tier;
 }

@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { Engine, PRESETS } from '../engine.esm.js';
 import { sweep } from '../app/sweep-core.js';
+import { heuristicExtract } from '../app/extract-heuristic.js';
 
 const root = new URL('..', import.meta.url).pathname;
 mkdirSync(root + 'dist', { recursive: true });
@@ -23,17 +24,22 @@ try {
   version = `v1.0.0 · ${sha} · ${date}`;
 } catch { /* not a git repo */ }
 
-// --- cold open: full-stack preset, precomputed findings (D8) ---
-const cold = PRESETS.find((p) => p.id === 'full-stack');
-console.log(`[build] precomputing cold-open findings for ${cold.id}…`);
-const coldResult = sweep(Engine, cold.topology, { seed: 42 });
+// --- cold open: the bundled Chatwoot worked example (D8/D12) ---
+// Read the real chatwoot slice (pinned fixture), extract its topology with the
+// same deterministic heuristic the live app uses, precompute the findings.
+const chatwoot = JSON.parse(readFileSync(root + 'tools/fixtures/chatwoot-analyze.json', 'utf8'));
+const cw = heuristicExtract(chatwoot);
+if (!cw) throw new Error('cold-open: chatwoot fixture yielded no topology');
+console.log(`[build] precomputing cold-open findings for chatwoot (${cw.topology.nodes.length} nodes)…`);
+const coldResult = sweep(Engine, cw.topology, { seed: 42 });
 const coldLoad = coldResult.findings.find((f) => f.kind === 'knee')?.at_rps || coldResult.system.peakRps || 50;
 writeFileSync(root + 'app/cold-open.json', JSON.stringify({
-  topology: cold.topology,
+  topology: cw.topology,
+  provenance: cw.provenance,
   findings: coldResult,
   load: coldLoad,
-  source: `preset:${cold.id}`,
-  provenance: {},
+  source: cw.source,
+  note: cw.note,
 }));
 
 // --- bundle the sweep worker (iife, self-contained) ---

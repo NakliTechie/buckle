@@ -1,0 +1,21 @@
+```json
+{
+  "nodes": [
+    { "id": "web", "kind": "service", "label": "web" },
+    { "id": "vote", "kind": "service", "label": "vote" },
+    { "id": "result", "kind": "service", "label": "result" },
+    { "id": "worker", "kind": "worker", "label": "worker" },
+    { "id": "redis", "kind": "cache", "label": "redis" },
+    { "id": "db", "kind": "db", "label": "db" },
+    { "id": "client", "kind": "client", "label": "client" }
+  ],
+  "edges": [
+    ["client", "web"],
+    ["web", "vote"],
+    ["web", "result"],
+    ["web", "worker"],
+    ["web", "redis"],
+    ["web", "db"]
+  ]
+}
+```
